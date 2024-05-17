@@ -8,13 +8,13 @@ from sklearn.svm import SVC
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pickle
+import streamlit as st
 
 # Load model and encoders
 with open('model_kpi-64130700365.pkl', 'rb') as file:
     model, department_encoder, region_encoder, education_encoder, gender_encoder, recruitment_channel_encoder = pickle.load(file)
 
 # Load your DataFrame
-# Replace 'your_data.csv' with the actual file name or URL
 df = pd.read_csv('Uncleaned_employees_final_dataset.csv')
 df = df.drop('employee_id', axis=1)
 
@@ -114,26 +114,20 @@ elif st.session_state.tab_selected == 2:
 
     # Upload CSV file
     uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
-    # uploaded_file
 
     if uploaded_file is not None:
         # Read CSV file
         csv_df_org = pd.read_csv(uploaded_file)
         csv_df_org = csv_df_org.dropna()
-        # csv_df_org.columns
-
         csv_df = csv_df_org.copy()
-        csv_df = csv_df.drop('employee_id',axis=1)
+        csv_df = csv_df.drop('employee_id', axis=1)
 
-
-
-         # Categorical Data Encoding
+        # Categorical Data Encoding
         csv_df['department'] = department_encoder.transform(csv_df['department'])
         csv_df['region'] = region_encoder.transform(csv_df['region'])
         csv_df['education'] = education_encoder.transform(csv_df['education'])
         csv_df['gender'] = gender_encoder.transform(csv_df['gender'])
         csv_df['recruitment_channel'] = recruitment_channel_encoder.transform(csv_df['recruitment_channel'])
-
 
         # Predicting
         predictions = model.predict(csv_df)
@@ -158,4 +152,3 @@ elif st.session_state.tab_selected == 2:
         plt.xlabel(feature_for_visualization)
         plt.ylabel('Number of Employees')
         st.pyplot(fig)
-
