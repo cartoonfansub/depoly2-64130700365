@@ -1,7 +1,10 @@
-
-import streamlit as st
 import pandas as pd
-import numpy as np
+from sklearn.preprocessing import LabelEncoder
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.ensemble import RandomForestClassifier
+from xgboost import XGBClassifier
+from sklearn.svm import SVC
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pickle
