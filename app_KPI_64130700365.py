@@ -1,158 +1,105 @@
-
 import streamlit as st
 import pandas as pd
-import numpy as np
+from sklearn.model_selection import GridSearchCV
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
+from sklearn.svm import SVC
+from sklearn.preprocessing import LabelEncoder
+from sklearn.metrics import confusion_matrix, classification_report
 import matplotlib.pyplot as plt
 import seaborn as sns
-import pickle
 
-# Load model and encoders
-with open('model_kpi_64130700365.pkl', 'rb') as file:
-    model, department_encoder, region_encoder, education_encoder, gender_encoder, recruitment_channel_encoder = pickle.load(file)
+# Load the dataset
+df = pd.read_csv('/mnt/data/Uncleaned_employees_final_dataset.csv')
 
-# Load your DataFrame
-# Replace 'your_data.csv' with the actual file name or URL
-df = pd.read_csv('Uncleaned_employees_final_dataset.csv')
-df = df.drop('employee_id', axis=1)
+# Display the first few rows of the dataset to understand its structure
+st.write(df.head())
 
-# Streamlit App
-st.title('Employee KPIs App')
+# Drop 'employee_id' and target column 'KPIs_met_more_than_80' from features
+X = df.drop(columns=['employee_id', 'KPIs_met_more_than_80'])
+y = df['KPIs_met_more_than_80']  # Target variable
 
-# Define a session state to remember tab selections
-if 'tab_selected' not in st.session_state:
-    st.session_state.tab_selected = 0
+# Encode categorical features if necessary
+categorical_columns = ['department', 'region', 'education', 'gender', 'recruitment_channel']
+for col in categorical_columns:
+    le = LabelEncoder()
+    X[col] = le.fit_transform(X[col])
 
-# Create tabs for prediction and visualization
-tabs = ['Predict KPIs', 'Visualize Data', 'Predict from CSV']
-selected_tab = st.radio('Select Tab:', tabs, index=st.session_state.tab_selected)
+# Define the pipeline
+model = Pipeline(steps=[
+    ('scaler', StandardScaler()),  # Normalization step
+    ('classifier', SVC())  # SVC classifier
+])
 
-# Tab selection logic
-if selected_tab != st.session_state.tab_selected:
-    st.session_state.tab_selected = tabs.index(selected_tab)
+# Define the parameter grid for GridSearchCV
+param_grid = {
+    'classifier__C': [0.1, 1, 10],
+    'classifier__gamma': ['scale', 'auto'],
+    'classifier__kernel': ['linear', 'rbf']
+}
 
-# Tab 1: Predict KPIs
-if st.session_state.tab_selected == 0:
-    st.header('Predict KPIs')
+# Create GridSearchCV
+grid_search = GridSearchCV(model, param_grid, cv=5, scoring='accuracy')  # You can adjust cv (cross-validation) as needed
 
-    # User Input Form
-    department = st.selectbox('Department', department_encoder.classes_)
-    region = st.selectbox('Region', region_encoder.classes_)
-    education = st.selectbox('Education', education_encoder.classes_)
-    gender = st.radio('Gender', gender_encoder.classes_)
-    recruitment_channel = st.selectbox('Recruitment Channel', recruitment_channel_encoder.classes_)
-    no_of_trainings = st.slider('Number of Trainings', 1, 10, 1)
-    age = st.slider('Age', 18, 60, 30)
-    previous_year_rating = st.slider('Previous Year Rating', 1.0, 5.0, 3.0)
-    length_of_service = st.slider('Length of Service', 1, 20, 5)
-    awards_won = st.checkbox('Awards Won')
-    avg_training_score = st.slider('Average Training Score', 40, 100, 70)
+# Fit the pipeline with GridSearchCV
+grid_search.fit(X, y)
 
-    # Create a DataFrame for the user input
-    user_input = pd.DataFrame({
-        'department': [department],
-        'region': [region],
-        'education': [education],
-        'gender': [gender],
-        'recruitment_channel': [recruitment_channel],
-        'no_of_trainings': [no_of_trainings],
-        'age': [age],
-        'previous_year_rating': [previous_year_rating],
-        'length_of_service': [length_of_service],
-        'awards_won': [1 if awards_won else 0],
-        'avg_training_score': [avg_training_score]
-    })
+# Access the best parameters and best estimator
+best_params = grid_search.best_params_
+best_estimator = grid_search.best_estimator_
 
-    # Categorical Data Encoding
-    user_input['department'] = department_encoder.transform(user_input['department'])
-    user_input['region'] = region_encoder.transform(user_input['region'])
-    user_input['education'] = education_encoder.transform(user_input['education'])
-    user_input['gender'] = gender_encoder.transform(user_input['gender'])
-    user_input['recruitment_channel'] = recruitment_channel_encoder.transform(user_input['recruitment_channel'])
+# Display the best parameters and best estimator
+st.write("Best Parameters:", best_params)
+st.write("Best Estimator:", best_estimator)
 
-    # Predicting
-    prediction = model.predict(user_input)
+# Example input data for prediction
+x_new = pd.DataFrame({
+    'department': ['Technology'],
+    'region': ['region_26'],
+    'education': ['Bachelors'],
+    'gender': ['m'],
+    'recruitment_channel': ['sourcing'],
+    'no_of_trainings': [1],
+    'age': [24],
+    'previous_year_rating': [2],
+    'length_of_service': [1],
+    'awards_won': [0],
+    'avg_training_score': [77]
+})
 
-    # Display Result
-    st.subheader('Prediction Result:')
-    st.write('KPIs_met_more_than_80:', prediction[0])
+# Function to replace unseen values with the first class in the encoder
+def replace_unseen_values(column, encoder):
+    unseen_values = set(column) - set(encoder.classes_)
+    column = column.apply(lambda x: encoder.classes_[0] if x in unseen_values else x)
+    return encoder.transform(column)
 
-# Tab 2: Visualize Data
-elif st.session_state.tab_selected == 1:
-    st.header('Visualize Data')
+# Replace unseen values with the first class in the encoder
+for col in categorical_columns:
+    le = LabelEncoder()
+    x_new[col] = replace_unseen_values(x_new[col], le)
 
-    # Select condition feature
-    condition_feature = st.selectbox('Select Condition Feature:', df.columns)
+# Make predictions using the best estimator on the new data
+y_pred_new = best_estimator.predict(x_new)
 
-    # Set default condition values
-    default_condition_values = ['Select All'] + df[condition_feature].unique().tolist()
+# Display the prediction result
+st.write('KPIs_met_more_than_80:', y_pred_new)
 
-    # Select condition values
-    condition_values = st.multiselect('Select Condition Values:', default_condition_values)
+# Make predictions using the best estimator on the entire dataset
+y_pred = best_estimator.predict(X)
 
-    # Handle 'Select All' choice
-    if 'Select All' in condition_values:
-        condition_values = df[condition_feature].unique().tolist()
+summary_eval = classification_report(y, y_pred, digits=4)
+st.write(summary_eval)
 
-    if len(condition_values) > 0:
-        # Filter DataFrame based on selected condition
-        filtered_df = df[df[condition_feature].isin(condition_values)]
+# Calculate the confusion matrix
+cm = confusion_matrix(y, y_pred)
 
-        # Plot the number of employees based on KPIs
-        fig, ax = plt.subplots(figsize=(14, 8))
-        sns.countplot(x=condition_feature, hue='KPIs_met_more_than_80', data=filtered_df, palette='viridis')
-        plt.title('Number of Employees based on KPIs')
-        plt.xlabel(condition_feature)
-        plt.ylabel('Number of Employees')
-        st.pyplot(fig)
+# Plot the confusion matrix using seaborn heatmap
+plt.figure(figsize=(6, 4))
+sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+plt.title('Confusion Matrix')
+plt.xlabel('Predicted')
+plt.ylabel('True')
+# Save the plot as an image file (e.g., PNG)
+plt.savefig('confusion_matrix_xxx.png')
 
-# Tab 3: Predict from CSV
-elif st.session_state.tab_selected == 2:
-    st.header('Predict from CSV')
-
-    # Upload CSV file
-    uploaded_file = st.file_uploader("Upload CSV file", type=["csv"])
-    # uploaded_file
-
-    if uploaded_file is not None:
-        # Read CSV file
-        csv_df_org = pd.read_csv(uploaded_file)
-        csv_df_org = csv_df_org.dropna()
-        # csv_df_org.columns
-
-        csv_df = csv_df_org.copy()
-        csv_df = csv_df.drop('employee_id',axis=1)
-
-
-
-         # Categorical Data Encoding
-        csv_df['department'] = department_encoder.transform(csv_df['department'])
-        csv_df['region'] = region_encoder.transform(csv_df['region'])
-        csv_df['education'] = education_encoder.transform(csv_df['education'])
-        csv_df['gender'] = gender_encoder.transform(csv_df['gender'])
-        csv_df['recruitment_channel'] = recruitment_channel_encoder.transform(csv_df['recruitment_channel'])
-
-
-        # Predicting
-        predictions = model.predict(csv_df)
-
-        # Add predictions to the DataFrame
-        csv_df_org['KPIs_met_more_than_80'] = predictions
-
-        # Display the DataFrame with predictions
-        st.subheader('Predicted Results:')
-        st.write(csv_df_org)
-
-        # Visualize predictions based on a selected feature
-        st.subheader('Visualize Predictions')
-
-        # Select feature for visualization
-        feature_for_visualization = st.selectbox('Select Feature for Visualization:', csv_df_org.columns)
-
-        # Plot the number of employees based on KPIs for the selected feature
-        fig, ax = plt.subplots(figsize=(14, 8))
-        sns.countplot(x=feature_for_visualization, hue='KPIs_met_more_than_80', data=csv_df_org, palette='viridis')
-        plt.title(f'Number of Employees based on KPIs - {feature_for_visualization}')
-        plt.xlabel(feature_for_visualization)
-        plt.ylabel('Number of Employees')
-        st.pyplot(fig)
-
+st.pyplot(plt)
